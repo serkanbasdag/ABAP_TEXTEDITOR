@@ -1,0 +1,366 @@
+REPORT ZSERKAN_O_TEXTEDITOR2.
+
+TABLES: ZSB_T_OGR.
+
+DATA: BEGIN OF IT_OGR OCCURS 0,
+  SEL(1)     TYPE  C,
+  OGR_NO     TYPE  ZSB_T_OGR-OGR_NO,
+  OGR_AD     TYPE  ZSB_T_OGR-OGR_AD ,
+  OGR_SOYAD  TYPE  ZSB_T_OGR-OGR_SOYAD,
+  OGR_SINIF  TYPE  ZSB_T_OGR-OGR_SINIF,
+  OGR_ADRES  TYPE  ZSB_T_OGR-OGR_ADRES,
+  END OF IT_OGR.
+
+  DATA: WA_OGR LIKE LINE OF IT_OGR.
+
+   DATA: LINE_LENGTH      TYPE I VALUE 254,
+         EDITOR_CONTAINER TYPE REF TO CL_GUI_CUSTOM_CONTAINER,
+         TEXT_EDITOR      TYPE REF TO CL_GUI_TEXTEDIT,
+         TEXT             TYPE STRING.
+
+   DATA: objcont LIKE solisti1 OCCURS 0 WITH HEADER LINE,
+         reclist LIKE somlreci1 OCCURS 0 WITH HEADER LINE,
+         doc_chng LIKE sodocchgi1.
+
+   DATA: D_OGR_NO(11),
+         D_OGR_AD(15),
+         D_OGR_SOYAD(15),
+         D_OGR_SINIF(2),
+         D_OGR_ADRES(50).
+
+DATA: gv_custom_container   TYPE REF TO cl_gui_custom_container,
+      gv_grid               TYPE REF TO cl_gui_alv_grid,
+      gt_itab LIKE TABLE OF vbap WITH HEADER LINE,
+      gt_fcat               TYPE lvc_t_fcat.
+
+  DATA: L_VALID TYPE C,
+        V_FLAG,
+        V_DATA_CHANGE,
+        V_ROW TYPE LVC_S_ROW,
+        V_COLUMN TYPE LVC_S_COL,
+        V_ROW_NUM TYPE LVC_S_ROID.
+
+
+TYPES: BEGIN OF lty_wa_lines,
+         line TYPE c LENGTH 225,
+       END OF lty_wa_lines.
+
+DATA: lt_lines TYPE TABLE OF tline,
+      wa_lines LIKE LINE OF lt_lines.
+
+TYPES : BEGIN OF t_text,
+          line(132) TYPE c,
+        END OF t_text.
+
+DATA : lt_text TYPE TABLE OF t_text,
+       ls_text LIKE LINE OF lt_text.
+
+
+DATA: header TYPE thead.
+DATA: txt_lines TYPE TABLE OF tline.
+
+class lcl_event_receiver  definition deferred.
+data: E_ROW               TYPE REF TO LVC_S_ROW,
+      E_COLUMN            TYPE REF TO LVC_S_COL,
+      event_receiver      type ref to lcl_event_receiver.
+
+*----------------------------------------------------------------------*
+*       CLASS lcl_event_receiver DEFINITION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+class lcl_event_receiver definition.
+
+  public section.
+    methods:
+    handle_double_click
+        for event double_click of cl_gui_alv_grid
+            importing e_row e_column.
+
+  private section.
+
+endclass.                    "lcl_event_receiver DEFINITION
+*----------------------------------------------------------------------*
+*       CLASS lcl_event_receiver IMPLEMENTATION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+class lcl_event_receiver implementation.
+
+  method handle_double_click.
+
+    read table IT_OGR index e_row-index into IT_OGR.
+     PERFORM set_adres.
+    CALL METHOD gv_grid->CHECK_CHANGED_DATA.
+    CALL METHOD gv_grid->REFRESH_TABLE_DISPLAY.
+  endmethod.                           "handle_double_click
+
+endclass.                    "lcl_event_receiver IMPLEMENTATION
+
+
+ START-OF-SELECTION.
+  CALL SCREEN '0101'.
+
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0101  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE STATUS_0101 OUTPUT.
+  SET PF-STATUS 'PF'.
+*  SET TITLEBAR 'xxx'.
+
+PERFORM display.
+
+ENDMODULE.
+
+
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0101  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE USER_COMMAND_0101 INPUT.
+  DATA: lv_cur_field(20),
+        lv_cur_val(20).
+
+ CASE sy-ucomm.
+    WHEN 'BACK' or 'CANCEL' or 'EXIT'.
+      LEAVE TO SCREEN 0.
+
+    WHEN 'ADRES_EKLE'.
+       PERFORM set_text.
+    WHEN 'KAYDET'.
+      PERFORM save_text.
+
+ENDCASE.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Form  SET_TEXT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM SET_TEXT .
+
+CALL FUNCTION 'TERM_CONTROL_EDIT'
+  EXPORTING
+    titel          = 'ADRES'
+  TABLES
+    textlines      = lt_text
+  EXCEPTIONS
+    user_cancelled = 1
+    OTHERS         = 2.
+
+
+LOOP AT lt_text INTO ls_text.
+  CONCATENATE D_OGR_ADRES ls_text INTO D_OGR_ADRES.
+ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SAVE_TEXT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM SAVE_TEXT.
+
+*LOOP AT IT_OGR.
+  ZSB_T_OGR-OGR_NO    = D_OGR_NO.
+  ZSB_T_OGR-OGR_AD    = D_OGR_AD  .
+  ZSB_T_OGR-OGR_SOYAD = D_OGR_SOYAD.
+  ZSB_T_OGR-OGR_SINIF = D_OGR_SINIF.
+  ZSB_T_OGR-OGR_ADRES = D_OGR_ADRES.
+
+ INSERT ZSB_T_OGR.
+ MODIFY ZSB_T_OGR.
+*ENDLOOP.
+ PERFORM display.
+
+
+  CLEAR : lt_lines[].
+  LOOP AT lt_text INTO ls_text.
+    CLEAR : wa_lines.
+    wa_lines-tdline = ls_text-line.
+    APPEND wa_lines TO lt_lines.
+  ENDLOOP.
+
+  "setup the text header.
+  header-tdobject = 'TEXT'.
+  header-tdname   = ZSB_T_OGR-OGR_NO.
+  CONDENSE header-tdname.
+  CONCATENATE 'SB' header-tdname INTO header-tdname SEPARATED BY '_'.
+  header-tdid     = 'ST'.
+  header-tdspras  = sy-langu.
+
+
+  CALL FUNCTION 'SAVE_TEXT'
+    EXPORTING
+      header          = header
+*     insert          = 'X'
+      savemode_direct = 'X'
+    TABLES
+      lines           = lt_lines
+    EXCEPTIONS
+      id              = 1
+      language        = 2
+      name            = 3
+      object          = 4
+      OTHERS          = 5.
+  IF sy-subrc <> 0.
+** Implement suitable error handling here
+*    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+*            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM DISPLAY .
+
+
+    IF gv_custom_container IS INITIAL .
+      CREATE OBJECT gv_custom_container
+        EXPORTING
+          container_name = 'CONT'.
+      CREATE OBJECT gv_grid
+        EXPORTING
+          i_parent = gv_custom_container.
+      CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+        EXPORTING
+          i_structure_name       = 'ZSB_T_OGR'
+        CHANGING
+          ct_fieldcat            = gt_fcat
+        EXCEPTIONS
+          inconsistent_interface = 1
+          program_error          = 2
+          OTHERS                 = 3.
+
+      SELECT * FROM ZSB_T_OGR INTO CORRESPONDING FIELDS OF TABLE
+        IT_OGR.
+
+      CALL METHOD gv_grid->set_table_for_first_display
+        EXPORTING
+          i_save                        = 'A'
+        CHANGING
+          it_outtab                     = IT_OGR[]
+          it_fieldcatalog               = gt_fcat[]
+        EXCEPTIONS
+          invalid_parameter_combination = 1
+          program_error                 = 2
+          too_many_lines                = 3
+          OTHERS                        = 4.
+      IF sy-subrc <> 0.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+                   WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      ENDIF.
+    ENDIF.
+
+        create object event_receiver.
+    set handler event_receiver->handle_double_click for gv_grid.
+
+    CALL METHOD gv_grid->CHECK_CHANGED_DATA.
+    CALL METHOD gv_grid->REFRESH_TABLE_DISPLAY.
+
+  CALL METHOD gv_grid->CHECK_CHANGED_DATA.
+
+  call method cl_gui_alv_grid=>set_focus
+    EXPORTING
+      control = gv_grid.
+
+
+ ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  READ_TEXT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM READ_TEXT .
+
+CLEAR: lt_lines.
+
+
+  CALL FUNCTION 'READ_TEXT'
+    EXPORTING
+      "client   = sy-mandt
+      id                      = header-tdid
+      language                = sy-langu
+      name                    = header-tdname
+      object                  = header-tdobject
+    TABLES
+      lines                   = lt_lines
+    EXCEPTIONS
+      id                      = 1
+      language                = 2
+      name                    = 3
+      not_found               = 4
+      object                  = 5
+      reference_check         = 6
+      wrong_access_to_archive = 7
+      OTHERS                  = 8.
+  IF sy-subrc <> 0.
+*    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+*            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+
+  CLEAR : lt_text[].
+  LOOP AT lt_lines INTO wa_lines.
+    CLEAR : ls_text.
+    ls_text-line = wa_lines-tdline.
+    APPEND ls_text TO lt_text.
+  ENDLOOP.
+
+  CALL METHOD TEXT_EDITOR->set_text_as_r3table
+    EXPORTING
+      table  = lt_text
+    EXCEPTIONS
+      OTHERS = 1.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SET_ADRES
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM SET_ADRES .
+
+    data : lT_INDEX_ROWS  TYPE LVC_T_ROW,
+           s_lT_INDEX_ROWS like LINE OF lT_INDEX_ROWS,
+           lT_ROW_NO  TYPE LVC_T_ROID.
+
+
+ gv_grid->GET_SELECTED_ROWS(
+        IMPORTING
+          ET_INDEX_ROWS =  lt_index_rows
+          ET_ROW_NO     =  lt_row_no
+      ).
+
+      LOOP AT lt_index_rows into s_lT_INDEX_ROWS .
+      READ TABLE IT_OGR into WA_OGR index s_lT_INDEX_ROWS-index.
+
+        MESSAGE WA_OGR-OGR_ADRES TYPE 'I'.
+
+*      MODIFY IT_OGR FROM WA_OGR INDEX s_lT_INDEX_ROWS-INDEX.
+      ENDLOOP.
+
+
+ENDFORM.
